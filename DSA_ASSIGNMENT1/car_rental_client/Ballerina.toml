@@ -1,0 +1,8 @@
+[package]
+org = "katat"
+name = "car_rental_client"
+version = "0.1.0"
+
+[build-options]
+observabilityIncluded = true
+

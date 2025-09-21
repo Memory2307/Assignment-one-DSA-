@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package carRental;
+
+// The service definition for the car rental system.
+service CarRentalService {
+  // Admin operations
+  rpc addCar(AddCarRequest) returns (AddCarResponse);
+  rpc updateCar(UpdateCarRequest) returns (UpdateCarResponse);
+  rpc removeCar(RemoveCarRequest) returns (RemoveCarResponse);
+  rpc listAllReservations(EmptyRequest) returns (ReservationList);
+
+  // Customer operations
+  rpc createUsers(stream UserRequest) returns (CreateUsersResponse);
+  rpc listAvailableCars(ListAvailableCarsRequest) returns (stream Car);
+  rpc searchCar(SearchCarRequest) returns (SearchCarResponse);
+  rpc addToCart(AddToCartRequest) returns (CartResponse);
+  rpc placeReservation(PlaceReservationRequest) returns (ReservationResponse);
+}
+
+// Request and response messages
+message AddCarRequest {
+  string make = 1;
+  string model = 2;
+  int32 year = 3;
+  double dailyPrice = 4;
+  int32 mileage = 5;
+  string plate = 6;
+  string status = 7; // AVAILABLE / UNAVAILABLE
+}
+
+message AddCarResponse {
+  string plate = 1;
+}
+
+message UpdateCarRequest {
+  string plate = 1;
+  double dailyPrice = 2;
+  string status = 3;
+}
+
+message UpdateCarResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RemoveCarRequest {
+  string plate = 1;
+}
+
+message RemoveCarResponse {
+  repeated Car updatedCars = 1;
+}
+
+message EmptyRequest {}
+
+message ReservationList {
+  repeated Reservation reservations = 1;
+}
+
+message UserRequest {
+  string userId = 1;
+  string userName = 2;
+  string userType = 3; // "admin" or "customer"
+}
+
+message CreateUsersResponse {
+  int32 numberOfUsersCreated = 1;
+}
+
+message ListAvailableCarsRequest {
+  string filter = 1; // optional text like "Toyota" or "2020"
+}
+
+message SearchCarRequest {
+  string plate = 1;
+}
+
+message SearchCarResponse {
+  Car car = 1;
+  string message = 2;
+}
+
+message AddToCartRequest {
+  string userId = 1;
+  string plate = 2;
+  string startDate = 3;
+  string endDate = 4;
+}
+
+message CartResponse {
+  string cartId = 1;
+  repeated CartItem items = 2;
+}
+
+message PlaceReservationRequest {
+  string userId = 1;
+  string cartId = 2;
+}
+
+message ReservationResponse {
+  string reservationId = 1;
+  string message = 2;
+}
+
+// Data models
+message Car {
+  string plate = 1;
+  string make = 2;
+  string model = 3;
+  int32 year = 4;
+  double dailyPrice = 5;
+  int32 mileage = 6;
+  string status = 7;
+}
+
+message CartItem {
+  string plate = 1;
+  string startDate = 2;
+  string endDate = 3;
+}
+
+message Reservation {
+  string reservationId = 1;
+  string userId = 2;
+  repeated Car cars = 3;
+  double totalAmount = 4;
+  string status = 5;
+}
