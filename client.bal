@@ -1,118 +1,202 @@
 import ballerina/io;
-// import ballerina/grpc;
-
-CarRentalServiceClient ep = check new ("http://localhost:9090");
+import ballerina/grpc;
 
 public function main() returns error? {
-    io:println("Welcome! Choose your role: 1-Admin 2-Customer");
-    string roleStr = io:readln();
-    int roleChoice = check int:fromString(roleStr);
+    // Connect to the gRPC server
+    CarRentalServiceClient clientEp = check new ("http://localhost:9090");
 
-    if roleChoice == 1 {
-        io:println("Admin Operations:\n1-Add Car\n2-Update Car\n3-Remove Car\n4-Create User");
-        string choiceStr = io:readln();
-        int choice = check int:fromString(choiceStr);
+    io:println("==== Car Rental Client ====");
 
-        if choice == 1 {
-            // Add Car
-            io:println("Enter car make:"); string make = io:readln();
-            io:println("Enter car model:"); string model = io:readln();
-            io:println("Enter year:"); string yearStr = io:readln(); int year = check int:fromString(yearStr);
-            io:println("Enter daily price:"); string dailyPriceStr = io:readln(); float dailyPrice = check float:fromString(dailyPriceStr);
-            io:println("Enter mileage:"); string mileageStr = io:readln(); int mileage = check int:fromString(mileageStr);
-            io:println("Enter number plate:"); string plate = io:readln();
-            io:println("Enter status (Available/Reserved):"); string status = io:readln();
+    // Ask the role at the start
+    string role = io:readln("Are you an Admin or a Customer? (Enter A/C): ");
 
-            Car newCar = { make: make, model: model, year: year, daily_price: dailyPrice,
-                           mileage: mileage, number_plate: plate, status: status };
-            AddCarResponse resp = check ep->add_car(newCar);
-            io:println("Added Car: ", resp);
+    if role.toUpperAscii() == "A" {
+        io:println("\n=== Admin Menu ===");
+        
+        // Admin function 1: Add a car
+        string addChoice = io:readln("\nDo you want to add a new car? (y/n): ");
+        if addChoice.toLowerAscii() == "y" {
+            string make = io:readln("Enter car make: ");
+            string model = io:readln("Enter car model: ");
+            string yearStr = io:readln("Enter car year: ");
+            string priceStr = io:readln("Enter daily price: ");
+            string mileageStr = io:readln("Enter mileage: ");
+            string plateNum = io:readln("Enter plate number: ");
+            string status = io:readln("Enter status (AVAILABLE/RENTED): ");
 
-        } else if choice == 2 {
-            // Update Car
-            io:println("Enter number plate to update:"); string plate = io:readln();
-            io:println("Enter new daily price:"); string priceStr = io:readln(); float price = check float:fromString(priceStr);
-            io:println("Enter new status:"); string status = io:readln();
+            int|error year = int:fromString(yearStr);
+            float|error dailyPrice = float:fromString(priceStr);
+            int|error mileage = int:fromString(mileageStr);
 
-            UpdateCarRequest req = { number_plate: plate, daily_price: price, status: status };
-            UpdateCarResponse resp = check ep->update_car(req);
-            io:println("Updated Car: ", resp);
+            if year is int && dailyPrice is float && mileage is int {
+                AddCarRequest addReq = {
+                    make: make,
+                    model: model,
+                    year: year,
+                    dailyPrice: dailyPrice,
+                    mileage: mileage,
+                    plate: plateNum,
+                    status: status
+                };
 
-        } else if choice == 3 {
-            // Remove Car
-            io:println("Enter number plate to remove:"); string plate = io:readln();
-            RemoveCarRequest req = { number_plate: plate };
-            ListCarsResponse resp = check ep->remove_car(req);
-            io:println("Remaining Cars: ", resp);
-
-        } else if choice == 4 {
-            // Create Users
-            io:println("Enter user ID:"); string id = io:readln();
-            io:println("Enter name:"); string name = io:readln();
-            io:println("Enter role (Admin/Customer):"); string role = io:readln();
-
-            User newUser = { user_id: id, name: name, role: role };
-
-            // Handle union return type from create_users
-            var streamingClientResult = ep->create_users();
-            if streamingClientResult is Create_usersStreamingClient {
-                Create_usersStreamingClient userStreamClient = streamingClientResult;
-                check userStreamClient->sendUser(newUser);
-                check userStreamClient->complete();
-                Empty? resp = check userStreamClient->receiveEmpty();
-                io:println("Created User: ", resp);
+                AddCarResponse|grpc:Error addRes = clientEp->addCar(addReq);
+                if addRes is AddCarResponse {
+                    io:println("Car added successfully with plate: ", addRes.plate);
+                } else {
+                    io:println("Error adding car: ", addRes.message());
+                }
             } else {
-                io:println("Failed to create user: ", streamingClientResult);
+                io:println("Invalid input for numeric fields");
             }
-
-        } else {
-            io:println("Invalid choice!");
         }
 
-    } else if roleChoice == 2 {
-        io:println("Customer Operations:\n1-Search Car\n2-List Available Cars\n3-Add to Cart\n4-Place Reservation");
-        string choiceStr = io:readln();
-        int choice = check int:fromString(choiceStr);
+        // Admin function 2: Create users (streaming)
+        string createUsersChoice = io:readln("\nDo you want to create users? (y/n): ");
+        if createUsersChoice.toLowerAscii() == "y" {
+            CreateUsersStreamingClient|grpc:Error streamingClient = clientEp->createUsers();
+            
+            if streamingClient is CreateUsersStreamingClient {
+                string continueCreating = "y";
+                while continueCreating.toLowerAscii() == "y" {
+                    string userId = io:readln("Enter user ID: ");
+                    string userName = io:readln("Enter user name: ");
+                    string userType = io:readln("Enter user type (admin/customer): ");
+                    
+                    UserRequest userReq = {
+                        userId: userId,
+                        userName: userName,
+                        userType: userType
+                    };
+                    
+                    grpc:Error? sendResult = streamingClient->sendUserRequest(userReq);
+                    if sendResult is grpc:Error {
+                        io:println("Error sending user request: ", sendResult.message());
+                    } else {
+                        io:println("User request sent successfully");
+                    }
+                    
+                    continueCreating = io:readln("Create another user? (y/n): ");
+                }
+                
+                // Complete the stream and get response
+                grpc:Error? completeResult = streamingClient->complete();
+                if completeResult is grpc:Error {
+                    io:println("Error completing stream: ", completeResult.message());
+                } else {
+                    CreateUsersResponse|grpc:Error? response = streamingClient->receiveCreateUsersResponse();
+                    if response is CreateUsersResponse {
+                        io:println("Users created successfully. Total: ", response.numberOfUsersCreated);
+                    } else if response is grpc:Error {
+                        io:println("Error receiving response: ", response.message());
+                    }
+                }
+            } else {
+                io:println("Error creating streaming client: ", streamingClient.message());
+            }
+        }
 
-        if choice == 1 {
-            // Search Car
-            io:println("Enter number plate to search:"); string plate = io:readln();
-            SearchCarRequest req = { number_plate: plate };
-            SearchCarResponse resp = check ep->search_car(req);
-            io:println("Searched Car: ", resp);
+        // Admin function 3: List all reservations
+        string listReservationsChoice = io:readln("\nDo you want to list all reservations? (y/n): ");
+        if listReservationsChoice.toLowerAscii() == "y" {
+            EmptyRequest emptyReq = {};
+            ReservationList|grpc:Error reservationList = clientEp->listAllReservations(emptyReq);
+            
+            if reservationList is ReservationList {
+                io:println("\n--- All Reservations ---");
+                foreach Reservation reservation in reservationList.reservations {
+                    io:println(string `Reservation ID: ${reservation.reservationId} | User ID: ${reservation.userId} | Total: $${reservation.totalAmount} | Status: ${reservation.status}`);
+                }
+            } else {
+                io:println("Error listing reservations: ", reservationList.message());
+            }
+        }
 
-        } else if choice == 2 {
-            // List Available Cars
-            io:println("Available Cars:");
-            ListAvailableCarsRequest req = { filter: "" };
-            stream<Car, error?> carStream = check ep->list_available_cars(req);
-            _ = check carStream.forEach(function(Car value) {
-                io:println(value);
+    } else if role.toUpperAscii() == "C" {
+        io:println("\n=== Customer Menu ===");
+        
+        // Customer function 1: List available cars
+        string filter = io:readln("Enter filter for available cars (e.g. Toyota or 2022, leave empty for all): ");
+        ListAvailableCarsRequest listReq = { filter: filter };
+
+        io:println("\n--- Available Cars ---");
+        stream<Car, grpc:Error?>|grpc:Error carsResult = clientEp->listAvailableCars(listReq);
+        
+        if carsResult is stream<Car, grpc:Error?> {
+            error? result = carsResult.forEach(function(Car car) {
+                io:println(string `Plate: ${car.plate} | Make: ${car.make} | Model: ${car.model} | Year: ${car.year} | Daily Price: $${car.dailyPrice} | Status: ${car.status}`);
             });
-
-        } else if choice == 3 {
-            // Add to Cart
-            io:println("Enter your user ID:"); string userId = io:readln();
-            io:println("Enter number plate to add to cart:"); string plate = io:readln();
-            io:println("Enter rental start date (YYYY-MM-DD):"); string startDate = io:readln();
-            io:println("Enter rental end date (YYYY-MM-DD):"); string endDate = io:readln();
-
-            AddToCartRequest req = { user_id: userId, number_plate: plate, start_date: startDate, end_date: endDate };
-            CartResponse resp = check ep->add_to_cart(req);
-            io:println("Added to Cart: ", resp);
-
-        } else if choice == 4 {
-            // Place Reservation
-            io:println("Enter your user ID to place reservation:"); string userId = io:readln();
-            PlaceReservationRequest req = { user_id: userId };
-            ReservationResponse resp = check ep->place_reservation(req);
-            io:println("Placed Reservation: ", resp);
-
+            
+            if result is error {
+                io:println("Error processing cars: ", result.message());
+            }
         } else {
-            io:println("Invalid choice!");
+            io:println("Error listing cars: ", carsResult.message());
+        }
+
+        // Customer function 2: Search for a specific car
+        string plate = io:readln("\nEnter car plate to search: ");
+        SearchCarRequest searchReq = { plate: plate };
+        SearchCarResponse|grpc:Error searchRes = clientEp->searchCar(searchReq);
+        
+        if searchRes is SearchCarResponse {
+            io:println("Search Result: ", searchRes.message);
+            if searchRes.car.plate != "" {
+                Car car = searchRes.car;
+                io:println(string `Found Car - Plate: ${car.plate} | Make: ${car.make} | Model: ${car.model} | Year: ${car.year} | Daily Price: $${car.dailyPrice} | Status: ${car.status}`);
+            }
+        } else {
+            io:println("Error searching for car: ", searchRes.message());
+        }
+
+        // Customer function 3: Add car to cart
+        string cartChoice = io:readln("\nDo you want to add a car to cart? (y/n): ");
+        if cartChoice.toLowerAscii() == "y" {
+            string userId = io:readln("Enter your user ID: ");
+            string carPlate = io:readln("Enter car plate to add to cart: ");
+            string startDate = io:readln("Enter start date (YYYY-MM-DD): ");
+            string endDate = io:readln("Enter end date (YYYY-MM-DD): ");
+
+            AddToCartRequest cartReq = {
+                userId: userId,
+                plate: carPlate,
+                startDate: startDate,
+                endDate: endDate
+            };
+
+            CartResponse|grpc:Error cartRes = clientEp->addToCart(cartReq);
+            if cartRes is CartResponse {
+                io:println("Added to cart successfully. Cart ID: ", cartRes.cartId);
+                io:println("Items in cart: ", cartRes.items.length());
+            } else {
+                io:println("Error adding to cart: ", cartRes.message());
+            }
+        }
+
+        // Customer function 4: Place reservation
+        string reservationChoice = io:readln("\nDo you want to place a reservation? (y/n): ");
+        if reservationChoice.toLowerAscii() == "y" {
+            string userId = io:readln("Enter your user ID: ");
+            string cartId = io:readln("Enter your cart ID: ");
+
+            PlaceReservationRequest reservationReq = {
+                userId: userId,
+                cartId: cartId
+            };
+
+            ReservationResponse|grpc:Error reservationRes = clientEp->placeReservation(reservationReq);
+            if reservationRes is ReservationResponse {
+                io:println("Reservation placed successfully!");
+                io:println("Reservation ID: ", reservationRes.reservationId);
+                io:println("Message: ", reservationRes.message);
+            } else {
+                io:println("Error placing reservation: ", reservationRes.message());
+            }
         }
 
     } else {
-        io:println("Invalid role choice!");
+        io:println("Invalid role selected. Please enter 'A' for Admin or 'C' for Customer.");
+        return;
     }
+
+    io:println("\n==== Client Session Completed ====");
 }
